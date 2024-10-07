@@ -1,17 +1,25 @@
-using Newtonsoft.Json;
+using Newtonsoft.Json; //com.unity.nuget.newtonsoft-json
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
-using UnityEngine;
 
+
+/// <summary>
+/// Represents a class for interacting with Firestore API.
+/// </summary>
 public class FirestoreAPI
 {
     private readonly string projectId;
     private readonly string baseUrl;
 
     // Initialize the FirestoreAPI with project ID
+    /// <summary>
+    /// Initializes the FirestoreAPI with the specified project ID.
+    /// </summary>
+    /// <param name="projectId">The project ID.</param>
     public FirestoreAPI(string projectId)
     {
         this.projectId = projectId;
@@ -19,6 +27,13 @@ public class FirestoreAPI
     }
 
     #region Get Data
+
+    /// <summary>
+    /// Retrieves data from Firestore based on the specified path.
+    /// </summary>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="onSuccess">The callback function to invoke on success.</param>
+    /// <param name="onError">The callback function to invoke on error.</param>
     public async void GetData(string path, Action<string> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}/";
@@ -40,6 +55,13 @@ public class FirestoreAPI
         }
     }
 
+    /// <summary>
+    /// Retrieves a specific field's value from Firestore based on the specified path and field name.
+    /// </summary>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="fieldName">The name of the field.</param>
+    /// <param name="onSuccess">The callback function to invoke on success.</param>
+    /// <param name="onError">The callback function to invoke on error.</param>
     public async void GetData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}?mask.fieldPaths={fieldName}";
@@ -73,6 +95,14 @@ public class FirestoreAPI
                     {
                         onSuccess?.Invoke(jsonResponse.fields[fieldName].booleanValue);
                     }
+                    else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].timestampValue))
+                    {
+                        onSuccess?.Invoke(jsonResponse.fields[fieldName].timestampValue);
+                    }
+                    //else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].arrayValue))
+                    //{
+                    //    onSuccess?.Invoke(jsonResponse.fields[fieldName].arrayValue);
+                    //}
                     else
                     {
                         onError?.Invoke($"Field '{fieldName}' has no value.");
@@ -93,6 +123,15 @@ public class FirestoreAPI
     #endregion
 
     #region Set Data
+    
+    /// <summary>
+    /// Sets a specific field's value in Firestore based on the specified path and field name.
+    /// </summary>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="fieldName">The name of the field.</param>
+    /// <param name="value">The value to set.</param>
+    /// <param name="onSuccess">The callback function to invoke on success.</param>
+    /// <param name="onError">The callback function to invoke on error.</param>
     public async void SetData(string path, string fieldName, object value, Action<string> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}?updateMask.fieldPaths={fieldName}";
@@ -120,6 +159,44 @@ public class FirestoreAPI
         {
             fieldType = "booleanValue";
             fieldValue = value.ToString().ToLower();
+        }
+        else if (value is Array array)
+        {
+            fieldType = "arrayValue";
+            StringBuilder arrayBuilder = new StringBuilder();
+            arrayBuilder.Append("{ \"values\": [");
+
+            foreach (var item in array)
+            {
+                if (item is string strItem)
+                {
+                    arrayBuilder.Append($"{{ \"stringValue\": \"{strItem}\" }},");
+                }
+                else if (item is int || item is long)
+                {
+                    arrayBuilder.Append($"{{ \"integerValue\": {item} }},");
+                }
+                else if (item is float || item is double)
+                {
+                    arrayBuilder.Append($"{{ \"doubleValue\": {item} }},");
+                }
+                else if (item is bool boolItem)
+                {
+                    arrayBuilder.Append($"{{ \"booleanValue\": {boolItem.ToString().ToLower()} }},");
+                }
+                else
+                {
+                    onError?.Invoke("Unsupported array element type.");
+                    return;
+                }
+            }
+
+            // Remove the trailing comma and close the JSON object
+            if (arrayBuilder[arrayBuilder.Length - 1] == ',')
+                arrayBuilder.Remove(arrayBuilder.Length - 1, 1);
+
+            arrayBuilder.Append("]}");
+            fieldValue = arrayBuilder.ToString();
         }
         else
         {
@@ -159,7 +236,13 @@ public class FirestoreAPI
         }
     }
 
-
+    /// <summary>
+    /// Sets multiple fields' values in Firestore based on the specified path and dictionary of field-value pairs.
+    /// </summary>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="dict">The dictionary of field-value pairs.</param>
+    /// <param name="onSuccess">The callback function to invoke on success.</param>
+    /// <param name="onError">The callback function to invoke on error.</param>
     public async void SetData(string path, Dictionary<string, object> dict, Action<string> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}";
@@ -198,6 +281,13 @@ public class FirestoreAPI
     #endregion
 
     #region Helper
+
+    /// <summary>
+    /// Converts the Firestore API response data to the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type to convert the response data to.</typeparam>
+    /// <param name="data">The response data that you got from firestore.</param>
+    /// <returns>The converted response data.</returns>
     public static T ConvertResponse<T>(string data)
     {
         T temp = Activator.CreateInstance<T>();
@@ -218,7 +308,6 @@ public class FirestoreAPI
                             field.SetValue(temp, t.stringValue);
                             break;
                         case nameof(Int32):
-                            Debug.Log(t.integerValue);
                             field.SetValue(temp, int.Parse(t.integerValue));
                             break;
                         case nameof(Boolean):
@@ -227,27 +316,99 @@ public class FirestoreAPI
                         case nameof(Double):
                             field.SetValue(temp, double.Parse(t.doubleValue));
                             break;
-
+                        case nameof(DateTime):
+                            field.SetValue(temp, DateTime.Parse(t.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
+                            break;
                         default:
-                            throw new Exception($"Error setting document: {field.FieldType.Name} type not supported");
+                            // Check if the field is an array or a generic list
+                            if (field.FieldType.IsArray)
+                            {
+                                var elementType = field.FieldType.GetElementType();
+                                var array = ParseArray(t.arrayValue, elementType);
+                                field.SetValue(temp, array);
+                            }
+                            else if (field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(List<>))
+                            {
+                                var elementType = field.FieldType.GetGenericArguments()[0];
+                                var list = ParseArray(t.arrayValue, elementType, true);
+                                field.SetValue(temp, list);
+                            }
+                            else
+                            {
+                                throw new Exception($"Error setting document: {field.FieldType.Name} type not supported");
+                            }
+                            break;
                     }
                 }
                 else
                 {
-                    Debug.LogWarning($"Field '{field.Name}' not found in the document");
+                    Console.Error.WriteLine($"Field '{field.Name}' not found in the document");
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError(e);
+                Console.Error.WriteLine(e.Message);
             }
         }
 
         return temp;
     }
 
+    private static object ParseArray(ArrayValue arrayValue, Type elementType, bool isList = false)
+    {
+        var values = arrayValue.values;
+        var array = Array.CreateInstance(elementType, values.Count);
 
-    private string ToJSON(Dictionary<string, object> fields)
+        for (int i = 0; i < values.Count; i++)
+        {
+            var element = values[i];
+            object parsedValue = null;
+
+            if (elementType == typeof(string))
+            {
+                parsedValue = element.stringValue;
+            }
+            else if (elementType == typeof(int))
+            {
+                parsedValue = int.Parse(element.integerValue);
+            }
+            else if (elementType == typeof(bool))
+            {
+                parsedValue = bool.Parse(element.booleanValue);
+            }
+            else if (elementType == typeof(double))
+            {
+                parsedValue = double.Parse(element.doubleValue);
+            }
+            else if (elementType == typeof(DateTime))
+            {
+                parsedValue = DateTime.Parse(element.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind);
+            }
+            else
+            {
+                throw new Exception($"Error parsing array element: {elementType.Name} type not supported");
+            }
+
+            array.SetValue(parsedValue, i);
+        }
+
+        // If it's a List<> instead of an array, convert to a list
+        if (isList)
+        {
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var list = Activator.CreateInstance(listType);
+            var addMethod = listType.GetMethod("Add");
+            foreach (var item in array)
+            {
+                addMethod.Invoke(list, new[] { item });
+            }
+            return list;
+        }
+
+        return array;
+    }
+
+    private static string ToJSON(Dictionary<string, object> fields)
     {
         var formattedFields = new StringBuilder();
         formattedFields.Append("{\"fields\":{");
@@ -270,10 +431,15 @@ public class FirestoreAPI
             {
                 formattedFields.Append($"\"{field.Key}\":{{\"booleanValue\":{field.Value.ToString().ToLower()}}},");
             }
+            else if (field.Value is IEnumerable<object> array)
+            {
+                // Handle arrays
+                formattedFields.Append(HandleArray(field.Key, array));
+            }
             else
             {
                 // Handle other data types as needed
-                Debug.LogWarning($"Unsupported data type for field '{field.Key}'");
+                Console.Error.WriteLine($"Unsupported data type for field '{field.Key}'");
             }
         }
 
@@ -286,19 +452,70 @@ public class FirestoreAPI
         return formattedFields.ToString();
     }
 
-    [Serializable]
-    public class FirestoreDocument
+    private static string HandleArray(string fieldName, IEnumerable<object> array)
     {
-        public Dictionary<string, FirestoreValue> fields;
+        var formattedFields = new StringBuilder();
+        formattedFields.Append($"\"{fieldName}\":{{\"arrayValue\":{{\"values\":[");
+
+        foreach (var item in array)
+        {
+            if (item is string strItem)
+            {
+                formattedFields.Append($"{{\"stringValue\":\"{strItem}\"}},");
+            }
+            else if (item is int || item is long)
+            {
+                formattedFields.Append($"{{\"integerValue\":\"{item}\"}},");
+            }
+            else if (item is float || item is double)
+            {
+                formattedFields.Append($"{{\"doubleValue\":{item}}},");
+            }
+            else if (item is bool boolItem)
+            {
+                formattedFields.Append($"{{\"booleanValue\":{boolItem.ToString().ToLower()}}},");
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unsupported array element type for field '{fieldName}'");
+                return null; // Stop processing if an unsupported array type is encountered
+            }
+        }
+
+        // Remove the trailing comma from the array and close the array JSON
+        if (array.Any())
+        {
+            formattedFields.Length--; // Remove trailing comma
+        }
+
+        formattedFields.Append("]}},");
+        return formattedFields.ToString();
     }
 
-    [Serializable]
-    public class FirestoreValue
+    #region Class
+    [System.Serializable]
+    public class FirestoreDocument
     {
-        public string stringValue;
-        public string integerValue;
-        public string doubleValue;
-        public string booleanValue;
+        public Dictionary<string, FirestoreField> fields { get; set; }
     }
+
+    [System.Serializable]
+    public class FirestoreField
+    {
+        public string stringValue { get; set; }
+        public string integerValue { get; set; }
+        public string booleanValue { get; set; }
+        public string doubleValue { get; set; }
+        public string timestampValue { get; set; }
+        public ArrayValue arrayValue { get; set; } // Updated to ArrayValue type
+    }
+
+    [System.Serializable]
+    public class ArrayValue
+    {
+        public List<FirestoreField> values { get; set; }
+    }
+    #endregion
+
     #endregion
 }
