@@ -6,7 +6,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text;
 
-
 /// <summary>
 /// Represents a class for interacting with Firestore API.
 /// </summary>
@@ -123,119 +122,6 @@ public class FirestoreAPI
     #endregion
 
     #region Set Data
-    
-    /// <summary>
-    /// Sets a specific field's value in Firestore based on the specified path and field name.
-    /// </summary>
-    /// <param name="path">The path to the document.</param>
-    /// <param name="fieldName">The name of the field.</param>
-    /// <param name="value">The value to set.</param>
-    /// <param name="onSuccess">The callback function to invoke on success.</param>
-    /// <param name="onError">The callback function to invoke on error.</param>
-    public async void SetData(string path, string fieldName, object value, Action<string> onSuccess, Action<string> onError = null)
-    {
-        string url = $"{baseUrl}{path}?updateMask.fieldPaths={fieldName}";
-
-        // Determine the Firestore type based on the object type
-        string fieldType = "";
-        string fieldValue = "";
-
-        if (value is string)
-        {
-            fieldType = "stringValue";
-            fieldValue = $"\"{value}\"";
-        }
-        else if (value is int || value is long)
-        {
-            fieldType = "integerValue";
-            fieldValue = value.ToString();
-        }
-        else if (value is float || value is double)
-        {
-            fieldType = "doubleValue";
-            fieldValue = value.ToString();
-        }
-        else if (value is bool)
-        {
-            fieldType = "booleanValue";
-            fieldValue = value.ToString().ToLower();
-        }
-        else if (value is Array array)
-        {
-            fieldType = "arrayValue";
-            StringBuilder arrayBuilder = new StringBuilder();
-            arrayBuilder.Append("{ \"values\": [");
-
-            foreach (var item in array)
-            {
-                if (item is string strItem)
-                {
-                    arrayBuilder.Append($"{{ \"stringValue\": \"{strItem}\" }},");
-                }
-                else if (item is int || item is long)
-                {
-                    arrayBuilder.Append($"{{ \"integerValue\": {item} }},");
-                }
-                else if (item is float || item is double)
-                {
-                    arrayBuilder.Append($"{{ \"doubleValue\": {item} }},");
-                }
-                else if (item is bool boolItem)
-                {
-                    arrayBuilder.Append($"{{ \"booleanValue\": {boolItem.ToString().ToLower()} }},");
-                }
-                else
-                {
-                    onError?.Invoke("Unsupported array element type.");
-                    return;
-                }
-            }
-
-            // Remove the trailing comma and close the JSON object
-            if (arrayBuilder[arrayBuilder.Length - 1] == ',')
-                arrayBuilder.Remove(arrayBuilder.Length - 1, 1);
-
-            arrayBuilder.Append("]}");
-            fieldValue = arrayBuilder.ToString();
-        }
-        else
-        {
-            onError?.Invoke("Unsupported data type.");
-            return;
-        }
-
-        // Create the JSON payload with the appropriate Firestore type
-        string jsonData = $"{{ \"fields\": {{ \"{fieldName}\": {{ \"{fieldType}\": {fieldValue} }} }} }}";
-
-        using (HttpClient client = new HttpClient())
-        {
-            HttpContent content = new StringContent(jsonData, Encoding.UTF8, "application/json");
-
-            // Add a header to simulate a PATCH request
-            HttpRequestMessage request = new HttpRequestMessage
-            {
-                Method = HttpMethod.Post,  // Use POST instead of PATCH
-                RequestUri = new Uri(url),
-                Content = content
-            };
-            request.Headers.Add("X-HTTP-Method-Override", "PATCH");  // Method override
-
-            HttpResponseMessage response = await client.SendAsync(request);
-
-            if (response.IsSuccessStatusCode)
-            {
-                string data = await response.Content.ReadAsStringAsync();
-                onSuccess?.Invoke(data);  // Invoke success callback
-            }
-            else
-            {
-                string error = await response.Content.ReadAsStringAsync();
-                onError?.Invoke(error);   // Invoke error callback if provided
-                throw new Exception($"Error updating field: {response.ReasonPhrase}");
-            }
-        }
-    }
-
     /// <summary>
     /// Sets multiple fields' values in Firestore based on the specified path and dictionary of field-value pairs.
     /// </summary>
@@ -278,6 +164,83 @@ public class FirestoreAPI
         }
     }
 
+    #endregion
+
+    #region Push Data
+    public async void PushData(string path, string fieldName, object value, Action<string> onSuccess, Action<string> onError = null)
+    {
+        Dictionary<string, object> dict = new Dictionary<string, object> { { fieldName, value } };
+
+        string url = $"{baseUrl}{path}?updateMask.fieldPaths={string.Join(",", dict.Keys)}";
+
+        string jsonData = ToJSON(dict);
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpContent content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+            // Add a header to simulate a PATCH request
+            HttpRequestMessage request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Post,  // Use POST instead of PATCH
+                RequestUri = new Uri(url),
+                Content = content
+            };
+            request.Headers.Add("X-HTTP-Method-Override", "PATCH");  // Method override
+
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string data = await response.Content.ReadAsStringAsync();
+                onSuccess?.Invoke(data);  // Returns the response after updating the fields
+            }
+            else
+            {
+                string errorData = await response.Content.ReadAsStringAsync();
+                onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+            }
+        }
+    }
+    #endregion
+
+    #region Delete Data
+    public async void DeleteData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
+    {
+        string jsonData = $"{{\"fields\":{{\"{fieldName}\": {{\"nullValue\": null}}}}}}";
+
+        string url = $"{baseUrl}{path}?currentDocument.exists=true&updateMask.fieldPaths={fieldName}";
+
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpContent content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+            // Add a header to simulate a PATCH request
+            HttpRequestMessage request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Post,  // Use POST instead of PATCH
+                RequestUri = new Uri(url),
+                Content = content
+            };
+            request.Headers.Add("X-HTTP-Method-Override", "PATCH");  // Method override
+
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string data = await response.Content.ReadAsStringAsync();
+                onSuccess?.Invoke(data);  // Returns the response after updating the fields
+            }
+            else
+            {
+                string errorData = await response.Content.ReadAsStringAsync();
+                onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+            }
+        }
+    }
     #endregion
 
     #region Helper
