@@ -1,10 +1,12 @@
 using Newtonsoft.Json; //com.unity.nuget.newtonsoft-json
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
+using UnityEngine;
 
 /// <summary>
 /// Represents a class for interacting with Firestore API.
@@ -14,26 +16,19 @@ public class FirestoreAPI
     private readonly string projectId;
     private readonly string baseUrl;
 
-    // Initialize the FirestoreAPI with project ID
-    /// <summary>
-    /// Initializes the FirestoreAPI with the specified project ID.
-    /// </summary>
-    /// <param name="projectId">The project ID.</param>
     public FirestoreAPI(string projectId)
     {
         this.projectId = projectId;
         this.baseUrl = $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents/";
     }
 
-    #region Get Data
+    public string GetPushID()
+    {
+        return Guid.NewGuid().ToString();
+    }
 
-    /// <summary>
-    /// Retrieves data from Firestore based on the specified path.
-    /// </summary>
-    /// <param name="path">The path to the document.</param>
-    /// <param name="onSuccess">The callback function to invoke on success.</param>
-    /// <param name="onError">The callback function to invoke on error.</param>
-    public async void GetData(string path, Action<string> onSuccess, Action<string> onError = null)
+    // done
+    public async void ReadData<T>(string path, Action<T> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}/";
 
@@ -44,7 +39,7 @@ public class FirestoreAPI
             if (response.IsSuccessStatusCode)
             {
                 string data = await response.Content.ReadAsStringAsync();
-                onSuccess?.Invoke(data); // Returns the document data
+                onSuccess?.Invoke(ConvertResponse<T>(data));
             }
             else
             {
@@ -54,14 +49,8 @@ public class FirestoreAPI
         }
     }
 
-    /// <summary>
-    /// Retrieves a specific field's value from Firestore based on the specified path and field name.
-    /// </summary>
-    /// <param name="path">The path to the document.</param>
-    /// <param name="fieldName">The name of the field.</param>
-    /// <param name="onSuccess">The callback function to invoke on success.</param>
-    /// <param name="onError">The callback function to invoke on error.</param>
-    public async void GetData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
+    //done
+    public async void ReadData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}?mask.fieldPaths={fieldName}";
 
@@ -119,17 +108,10 @@ public class FirestoreAPI
             }
         }
     }
-    #endregion
-
-    #region Set Data
-    /// <summary>
-    /// Sets multiple fields' values in Firestore based on the specified path and dictionary of field-value pairs.
-    /// </summary>
-    /// <param name="path">The path to the document.</param>
-    /// <param name="dict">The dictionary of field-value pairs.</param>
-    /// <param name="onSuccess">The callback function to invoke on success.</param>
-    /// <param name="onError">The callback function to invoke on error.</param>
-    public async void SetData(string path, Dictionary<string, object> dict, Action<string> onSuccess, Action<string> onError = null)
+    
+    
+    //done
+    public async void SetData(string path, Dictionary<string, object> dict, Action onSuccess = null, Action<string> onError = null)
     {
         string url = $"{baseUrl}{path}";
 
@@ -152,8 +134,8 @@ public class FirestoreAPI
 
             if (response.IsSuccessStatusCode)
             {
-                string data = await response.Content.ReadAsStringAsync();
-                onSuccess?.Invoke(data);  // Returns the response after updating the fields
+                //string data = await response.Content.ReadAsStringAsync();
+                onSuccess?.Invoke();
             }
             else
             {
@@ -164,10 +146,8 @@ public class FirestoreAPI
         }
     }
 
-    #endregion
-
-    #region Push Data
-    public async void PushData(string path, string fieldName, object value, Action<string> onSuccess, Action<string> onError = null)
+    //done
+    public async void SetData(string path, string fieldName, object value, Action onSuccess = null, Action<string> onError = null)
     {
         Dictionary<string, object> dict = new Dictionary<string, object> { { fieldName, value } };
 
@@ -192,8 +172,8 @@ public class FirestoreAPI
 
             if (response.IsSuccessStatusCode)
             {
-                string data = await response.Content.ReadAsStringAsync();
-                onSuccess?.Invoke(data);  // Returns the response after updating the fields
+                //string data = await response.Content.ReadAsStringAsync();
+                onSuccess?.Invoke();
             }
             else
             {
@@ -203,55 +183,188 @@ public class FirestoreAPI
             }
         }
     }
-    #endregion
 
-    #region Delete Data
-    public async void DeleteData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
+    public async void DeleteData(string path, Action<string> onSuccess = null, Action<string> onError = null)
     {
-        string jsonData = $"{{\"fields\":{{\"{fieldName}\": {{\"nullValue\": null}}}}}}";
-
-        string url = $"{baseUrl}{path}?currentDocument.exists=true&updateMask.fieldPaths={fieldName}";
-
+        string url = $"{baseUrl}{path}";
 
         using (HttpClient client = new HttpClient())
         {
-            HttpContent content = new StringContent(jsonData, Encoding.UTF8, "application/json");
-
-            // Add a header to simulate a PATCH request
             HttpRequestMessage request = new HttpRequestMessage
             {
-                Method = HttpMethod.Post,  // Use POST instead of PATCH
-                RequestUri = new Uri(url),
-                Content = content
+                Method = HttpMethod.Delete,  // Use DELETE method
+                RequestUri = new Uri(url)
             };
-            request.Headers.Add("X-HTTP-Method-Override", "PATCH");  // Method override
 
             HttpResponseMessage response = await client.SendAsync(request);
 
             if (response.IsSuccessStatusCode)
             {
-                string data = await response.Content.ReadAsStringAsync();
-                onSuccess?.Invoke(data);  // Returns the response after updating the fields
+                onSuccess?.Invoke("Document deleted successfully");
             }
             else
             {
                 string errorData = await response.Content.ReadAsStringAsync();
-                onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
-                throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                onError?.Invoke($"Error deleting document: {response.ReasonPhrase}, Details: {errorData}");
+                throw new Exception($"Error deleting document: {response.ReasonPhrase}, Details: {errorData}");
             }
         }
     }
+
+    public async void ValidatePath(string path, Action<bool> onSuccess, Action<string> onError = null)
+    {
+        string url = $"{baseUrl}{path}";
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpResponseMessage response = await client.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                onSuccess?.Invoke(true);  // Document exists
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                onSuccess?.Invoke(false);  // Document does not exist
+            }
+            else
+            {
+                string errorData = await response.Content.ReadAsStringAsync();
+                onError?.Invoke($"Error validating document: {response.ReasonPhrase}, Details: {errorData}");
+                throw new Exception($"Error validating document: {response.ReasonPhrase}, Details: {errorData}");
+            }
+        }
+    }
+
+    #region Query
+    public async void QueryItems(string path, string collectionName, DateTime filterTime, Action<List<string>> onSuccess, Action<string> onError = null)
+    {
+        string url = path.Equals("") ? $"{baseUrl[..^1]}:runQuery" : $"{baseUrl}{path}:runQuery";
+
+        string formattedTime = filterTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+
+        string jsonRequest = $@"{{
+    ""structuredQuery"": {{
+        ""from"": [{{ ""collectionId"": ""{collectionName}"" }}],
+        ""where"": {{
+            ""fieldFilter"": {{
+                ""field"": {{ ""fieldPath"": ""creationTime"" }},
+                ""op"": ""GREATER_THAN"",
+                ""value"": {{ ""timestampValue"": ""{formattedTime}"" }}
+            }}
+        }},
+        ""orderBy"": [{{ ""field"": {{ ""fieldPath"": ""creationTime"" }}, ""direction"": ""ASCENDING"" }}]
+    }}
+}}";
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpContent content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+            try
+            {
+                HttpResponseMessage response = await client.PostAsync(url, content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string responseData = await response.Content.ReadAsStringAsync();
+                    onSuccess?.Invoke(ConvertQueryResponse(responseData));
+                }
+                else
+                {
+                    string errorData = await response.Content.ReadAsStringAsync();
+                    Debug.LogError($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
+                    onError?.Invoke($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Exception: {ex.Message}");
+                onError?.Invoke($"Exception: {ex.Message}");
+            }
+        }
+    }
+
+
+    public async void QueryItems(string path, string collectionName, int amount, Action<List<string>> onSuccess, Action<string> onError = null)
+    {
+        string url = path.Equals("") ? $"{baseUrl[..^1]}:runQuery" : $"{baseUrl}{path}:runQuery";
+
+        string jsonRequest = $@"{{
+        ""structuredQuery"": {{
+            ""from"": [{{ ""collectionId"": ""{collectionName}"" }}],
+            ""orderBy"": [{{ ""field"": {{ ""fieldPath"": ""creationTime"" }}, ""direction"": ""DESCENDING"" }}],
+            ""limit"": {amount}
+        }}
+    }}";
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpContent content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+            try
+            {
+                HttpResponseMessage response = await client.PostAsync(url, content); // Use the modified URL
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string responseData = await response.Content.ReadAsStringAsync();
+                    onSuccess?.Invoke(ConvertQueryResponse(responseData));
+                }
+                else
+                {
+                    string errorData = await response.Content.ReadAsStringAsync();
+                    Debug.LogError($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
+                    onError?.Invoke($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}"); 
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Exception: {ex.Message}");
+                onError?.Invoke($"Exception: {ex.Message}");
+            }
+        }
+    }
+
+    List<string> ConvertQueryResponse(string jsonResponse)
+    {
+        var documents = JsonConvert.DeserializeObject<List<QueryResponse>>(jsonResponse);
+
+        List<string> documentNames = new List<string>();
+        foreach (var doc in documents)
+        {
+            documentNames.Add(doc.document.name.Split('/').Last());
+        }
+
+        return documentNames;
+    }
+
+    class QueryResponse
+    {
+        public Doc document { get; set; }
+
+        public class Doc
+        {
+            public string name { get; set; }
+            public Fields fields { get; set; }
+
+            public class Fields
+            {
+                public Timestamp creationTime { get; set; }
+                public class Timestamp
+                {
+                    public string timestampValue { get; set; }
+                }
+            }
+        }
+
+    }
+
+    
     #endregion
 
     #region Helper
-
-    /// <summary>
-    /// Converts the Firestore API response data to the specified type.
-    /// </summary>
-    /// <typeparam name="T">The type to convert the response data to.</typeparam>
-    /// <param name="data">The response data that you got from firestore.</param>
-    /// <returns>The converted response data.</returns>
-    public static T ConvertResponse<T>(string data)
+    private T ConvertResponse<T>(string data)
     {
         T temp = Activator.CreateInstance<T>();
 
@@ -259,48 +372,41 @@ public class FirestoreAPI
 
         Type type = typeof(T);
         FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+
         foreach (FieldInfo field in fields)
         {
             try
             {
                 if (dict.fields.TryGetValue(field.Name, out var t))
                 {
-                    switch (field.FieldType.Name)
+                    if (t.mapValue != null && t.mapValue.fields != null)
                     {
-                        case nameof(String):
-                            field.SetValue(temp, t.stringValue);
-                            break;
-                        case nameof(Int32):
-                            field.SetValue(temp, int.Parse(t.integerValue));
-                            break;
-                        case nameof(Boolean):
-                            field.SetValue(temp, bool.Parse(t.booleanValue));
-                            break;
-                        case nameof(Double):
-                            field.SetValue(temp, double.Parse(t.doubleValue));
-                            break;
-                        case nameof(DateTime):
-                            field.SetValue(temp, DateTime.Parse(t.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
-                            break;
-                        default:
-                            // Check if the field is an array or a generic list
-                            if (field.FieldType.IsArray)
-                            {
-                                var elementType = field.FieldType.GetElementType();
-                                var array = ParseArray(t.arrayValue, elementType);
-                                field.SetValue(temp, array);
-                            }
-                            else if (field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(List<>))
-                            {
-                                var elementType = field.FieldType.GetGenericArguments()[0];
-                                var list = ParseArray(t.arrayValue, elementType, true);
-                                field.SetValue(temp, list);
-                            }
-                            else
-                            {
+                        // Handle nested object mapping
+                        var nestedObject = ParseNestedObject(field.FieldType, t.mapValue.fields);
+                        field.SetValue(temp, nestedObject);
+                    }
+                    else
+                    {
+                        switch (field.FieldType.Name)
+                        {
+                            case nameof(String):
+                                field.SetValue(temp, t.stringValue);
+                                break;
+                            case nameof(Int32):
+                                field.SetValue(temp, int.Parse(t.integerValue));
+                                break;
+                            case nameof(Boolean):
+                                field.SetValue(temp, bool.Parse(t.booleanValue));
+                                break;
+                            case nameof(Double):
+                                field.SetValue(temp, double.Parse(t.doubleValue));
+                                break;
+                            case nameof(DateTime):
+                                field.SetValue(temp, DateTime.Parse(t.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
+                                break;
+                            default:
                                 throw new Exception($"Error setting document: {field.FieldType.Name} type not supported");
-                            }
-                            break;
+                        }
                     }
                 }
                 else
@@ -317,7 +423,58 @@ public class FirestoreAPI
         return temp;
     }
 
-    private static object ParseArray(ArrayValue arrayValue, Type elementType, bool isList = false)
+    private object ParseNestedObject(Type objectType, Dictionary<string, FirestoreField> mapFields)
+    {
+        // Create an instance of the nested object type
+        var nestedObject = Activator.CreateInstance(objectType);
+
+        // Get fields of the nested object type
+        var fields = objectType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var field in fields)
+        {
+            if (mapFields.TryGetValue(field.Name, out var fieldValue))
+            {
+                switch (field.FieldType.Name)
+                {
+                    case nameof(String):
+                        field.SetValue(nestedObject, fieldValue.stringValue);
+                        break;
+                    case nameof(Int32):
+                        field.SetValue(nestedObject, int.Parse(fieldValue.integerValue));
+                        break;
+                    case nameof(Boolean):
+                        field.SetValue(nestedObject, bool.Parse(fieldValue.booleanValue));
+                        break;
+                    case nameof(Double):
+                        field.SetValue(nestedObject, double.Parse(fieldValue.doubleValue));
+                        break;
+                    case nameof(DateTime):
+                        field.SetValue(nestedObject, DateTime.Parse(fieldValue.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
+                        break;
+                    default:
+                        if (fieldValue.mapValue != null && fieldValue.mapValue.fields != null)
+                        {
+                            // Recursively handle further nested objects
+                            var nested = ParseNestedObject(field.FieldType, fieldValue.mapValue.fields);
+                            field.SetValue(nestedObject, nested);
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine($"Unsupported type: {field.FieldType.Name}");
+                        }
+                        break;
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine($"Field '{field.Name}' not found in nested object");
+            }
+        }
+
+        return nestedObject;
+    }
+    private object ParseArray(ArrayValue arrayValue, Type elementType, bool isList = false)
     {
         var values = arrayValue.values;
         var array = Array.CreateInstance(elementType, values.Count);
@@ -371,7 +528,7 @@ public class FirestoreAPI
         return array;
     }
 
-    private static string ToJSON(Dictionary<string, object> fields)
+    public string ToJSON(Dictionary<string, object> fields)
     {
         var formattedFields = new StringBuilder();
         formattedFields.Append("{\"fields\":{");
@@ -381,27 +538,42 @@ public class FirestoreAPI
             if (field.Value is string)
             {
                 formattedFields.Append($"\"{field.Key}\":{{\"stringValue\":\"{field.Value}\"}},");
+
             }
             else if (field.Value is int || field.Value is long)
             {
                 formattedFields.Append($"\"{field.Key}\":{{\"integerValue\":\"{field.Value}\"}},");
+
             }
             else if (field.Value is float || field.Value is double)
             {
                 formattedFields.Append($"\"{field.Key}\":{{\"doubleValue\":{field.Value}}},");
+
             }
             else if (field.Value is bool)
             {
                 formattedFields.Append($"\"{field.Key}\":{{\"booleanValue\":{field.Value.ToString().ToLower()}}},");
+
+            }
+            else if (field.Value is DateTime dateTimeValue) // Handle DateTime values
+            {
+                string timestampValue = dateTimeValue.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
+                formattedFields.Append($"\"{field.Key}\":{{\"timestampValue\":\"{timestampValue}\"}},");
             }
             else if (field.Value is IEnumerable<object> array)
             {
                 // Handle arrays
                 formattedFields.Append(HandleArray(field.Key, array));
+
+            }
+            else if (field.Value is Dictionary<string, object> nestedDict) // Handle nested dictionaries
+            {
+                // Recursive call to handle nested dictionaries
+                formattedFields.Append($"\"{field.Key}\":{{\"mapValue\":{ToJSON(nestedDict)}}},");
             }
             else
             {
-                // Handle other data types as needed
+                // Handle other unsupported data types
                 Console.Error.WriteLine($"Unsupported data type for field '{field.Key}'");
             }
         }
@@ -415,7 +587,8 @@ public class FirestoreAPI
         return formattedFields.ToString();
     }
 
-    private static string HandleArray(string fieldName, IEnumerable<object> array)
+
+    private string HandleArray(string fieldName, IEnumerable<object> array)
     {
         var formattedFields = new StringBuilder();
         formattedFields.Append($"\"{fieldName}\":{{\"arrayValue\":{{\"values\":[");
@@ -470,8 +643,15 @@ public class FirestoreAPI
         public string booleanValue { get; set; }
         public string doubleValue { get; set; }
         public string timestampValue { get; set; }
-        public ArrayValue arrayValue { get; set; } // Updated to ArrayValue type
+        public ArrayValue arrayValue { get; set; }
+        public MapValue mapValue { get; set; }
     }
+
+    public class MapValue
+    {
+        public Dictionary<string, FirestoreField> fields { get; set; }
+    }
+
 
     [System.Serializable]
     public class ArrayValue
