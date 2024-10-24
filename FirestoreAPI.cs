@@ -1,12 +1,10 @@
 using Newtonsoft.Json; //com.unity.nuget.newtonsoft-json
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
-using UnityEngine;
 
 /// <summary>
 /// Represents a class for interacting with Firestore API.
@@ -44,7 +42,7 @@ public class FirestoreAPI
             else
             {
                 onError?.Invoke(response.ReasonPhrase);
-                throw new Exception($"Error getting document: {response.ReasonPhrase}");
+                throw new Exception($"Error getting document from ({path}): {response.ReasonPhrase}");
             }
         }
     }
@@ -94,17 +92,19 @@ public class FirestoreAPI
                     else
                     {
                         onError?.Invoke($"Field '{fieldName}' has no value.");
+                        if (onError == null) throw new Exception($"Field '{fieldName}' has no value.");
                     }
                 }
                 else
                 {
                     onError?.Invoke($"Field '{fieldName}' not found in document.");
+                    if (onError == null) throw new Exception($"Field '{fieldName}' not found in document.");
                 }
             }
             else
             {
                 onError?.Invoke(response.ReasonPhrase);
-                throw new Exception($"Error fetching field: {response.ReasonPhrase}");
+                if (onError == null) throw new Exception($"Error fetching field: {response.ReasonPhrase}");
             }
         }
     }
@@ -136,12 +136,13 @@ public class FirestoreAPI
             {
                 //string data = await response.Content.ReadAsStringAsync();
                 onSuccess?.Invoke();
+                if (onSuccess == null) Console.WriteLine("Document set successfully at " + path);
             }
             else
             {
                 string errorData = await response.Content.ReadAsStringAsync();
                 onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
-                throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                if (onError == null) throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
             }
         }
     }
@@ -174,12 +175,13 @@ public class FirestoreAPI
             {
                 //string data = await response.Content.ReadAsStringAsync();
                 onSuccess?.Invoke();
+                if (onSuccess == null) Console.WriteLine("Document set successfully at " + path);
             }
             else
             {
                 string errorData = await response.Content.ReadAsStringAsync();
                 onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
-                throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                if (onError == null) throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
             }
         }
     }
@@ -201,18 +203,28 @@ public class FirestoreAPI
             if (response.IsSuccessStatusCode)
             {
                 onSuccess?.Invoke("Document deleted successfully");
+                if (onSuccess == null) Console.WriteLine("Document deleted successfully at " + path);
+                Console.WriteLine("Document deleted successfully: path=> " + path);
             }
             else
             {
                 string errorData = await response.Content.ReadAsStringAsync();
                 onError?.Invoke($"Error deleting document: {response.ReasonPhrase}, Details: {errorData}");
-                throw new Exception($"Error deleting document: {response.ReasonPhrase}, Details: {errorData}");
+                if (onError == null) throw new Exception($"Error deleting document: {response.ReasonPhrase}, Details: {errorData}");
             }
         }
     }
 
     public async void ValidatePath(string path, Action<bool> onSuccess, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+        
         string url = $"{baseUrl}{path}";
 
         using (HttpClient client = new HttpClient())
@@ -231,7 +243,7 @@ public class FirestoreAPI
             {
                 string errorData = await response.Content.ReadAsStringAsync();
                 onError?.Invoke($"Error validating document: {response.ReasonPhrase}, Details: {errorData}");
-                throw new Exception($"Error validating document: {response.ReasonPhrase}, Details: {errorData}");
+                if (onError == null) throw new Exception($"Error validating document: {response.ReasonPhrase}, Details: {errorData}");
             }
         }
     }
@@ -273,14 +285,14 @@ public class FirestoreAPI
                 else
                 {
                     string errorData = await response.Content.ReadAsStringAsync();
-                    Debug.LogError($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
                     onError?.Invoke($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
+                    if (onError == null) throw new Exception($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Exception: {ex.Message}");
                 onError?.Invoke($"Exception: {ex.Message}");
+                if (onError == null) throw new Exception($"Exception: {ex.Message}");
             }
         }
     }
@@ -314,14 +326,14 @@ public class FirestoreAPI
                 else
                 {
                     string errorData = await response.Content.ReadAsStringAsync();
-                    Debug.LogError($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
-                    onError?.Invoke($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}"); 
+                    onError?.Invoke($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
+                    if (onError == null) throw new Exception($"Error fetching documents: {response.ReasonPhrase}, Details: {errorData}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Exception: {ex.Message}");
                 onError?.Invoke($"Exception: {ex.Message}");
+                if (onError == null) throw new Exception($"Exception: {ex.Message}");
             }
         }
     }
@@ -360,7 +372,7 @@ public class FirestoreAPI
 
     }
 
-    
+
     #endregion
 
     #region Helper
@@ -387,25 +399,34 @@ public class FirestoreAPI
                     }
                     else
                     {
-                        switch (field.FieldType.Name)
+                        if (field.FieldType.IsEnum) // Check if the field is an enum
                         {
-                            case nameof(String):
-                                field.SetValue(temp, t.stringValue);
-                                break;
-                            case nameof(Int32):
-                                field.SetValue(temp, int.Parse(t.integerValue));
-                                break;
-                            case nameof(Boolean):
-                                field.SetValue(temp, bool.Parse(t.booleanValue));
-                                break;
-                            case nameof(Double):
-                                field.SetValue(temp, double.Parse(t.doubleValue));
-                                break;
-                            case nameof(DateTime):
-                                field.SetValue(temp, DateTime.Parse(t.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
-                                break;
-                            default:
-                                throw new Exception($"Error setting document: {field.FieldType.Name} type not supported");
+                            // Try to parse the enum value
+                            var enumValue = Enum.Parse(field.FieldType, t.stringValue);
+                            field.SetValue(temp, enumValue);
+                        }
+                        else
+                        {
+                            switch (field.FieldType.Name)
+                            {
+                                case nameof(String):
+                                    field.SetValue(temp, t.stringValue);
+                                    break;
+                                case nameof(Int32):
+                                    field.SetValue(temp, int.Parse(t.integerValue));
+                                    break;
+                                case nameof(Boolean):
+                                    field.SetValue(temp, bool.Parse(t.booleanValue));
+                                    break;
+                                case nameof(Double):
+                                    field.SetValue(temp, double.Parse(t.doubleValue));
+                                    break;
+                                case nameof(DateTime):
+                                    field.SetValue(temp, DateTime.Parse(t.timestampValue, null, System.Globalization.DateTimeStyles.RoundtripKind));
+                                    break;
+                                default:
+                                    throw new Exception($"Error setting document: {field.FieldType.Name} type not supported");
+                            }
                         }
                     }
                 }
@@ -422,6 +443,7 @@ public class FirestoreAPI
 
         return temp;
     }
+
 
     private object ParseNestedObject(Type objectType, Dictionary<string, FirestoreField> mapFields)
     {
@@ -570,6 +592,11 @@ public class FirestoreAPI
             {
                 // Recursive call to handle nested dictionaries
                 formattedFields.Append($"\"{field.Key}\":{{\"mapValue\":{ToJSON(nestedDict)}}},");
+            }
+            else if (field.Value.GetType().IsEnum) // Handle enums
+            {
+                string enumStringValue = Enum.GetName(field.Value.GetType(), field.Value);
+                formattedFields.Append($"\"{field.Key}\":{{\"stringValue\":\"{enumStringValue}\"}},");
             }
             else
             {
