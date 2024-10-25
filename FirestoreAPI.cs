@@ -20,14 +20,33 @@ public class FirestoreAPI
         this.baseUrl = $"https://firestore.googleapis.com/v1/projects/{projectId}/databases/(default)/documents/";
     }
 
-    public string GetPushID()
-    {
-        return Guid.NewGuid().ToString();
-    }
+    /// <summary>
+    /// Generates a unique push ID.
+    /// </summary>
+    /// <returns>A unique push ID string.</returns>
+    public string GetPushID() => Guid.NewGuid().ToString();
 
-    // done
+
+    #region Read
+
+    /// <summary>
+    /// Reads data from Firestore.
+    /// </summary>
+    /// <typeparam name="T">The type of the data to read.</typeparam>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="onSuccess">Callback invoked on successful read.</param>
+    /// <param name="onError">Callback invoked on error.</param>
+    /// <exception cref="Exception">Thrown when an error occurs.</exception>
     public async void ReadData<T>(string path, Action<T> onSuccess, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
         string url = $"{baseUrl}{path}/";
 
         using (HttpClient client = new HttpClient())
@@ -47,9 +66,24 @@ public class FirestoreAPI
         }
     }
 
-    //done
+    /// <summary>
+    /// Reads a specific field's data from Firestore.
+    /// </summary>
+    /// <param name="path">The path to the document.</param>
+    /// <param name="fieldName">The name of the field to read.</param>
+    /// <param name="onSuccess">Callback invoked on successful read.</param>
+    /// <param name="onError">Callback invoked on error.</param>
+    /// <exception cref="Exception">Thrown when an error occurs.</exception>
     public async void ReadData(string path, string fieldName, Action<string> onSuccess, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
         string url = $"{baseUrl}{path}?mask.fieldPaths={fieldName}";
 
         using (HttpClient client = new HttpClient())
@@ -85,10 +119,10 @@ public class FirestoreAPI
                     {
                         onSuccess?.Invoke(jsonResponse.fields[fieldName].timestampValue);
                     }
-                    //else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].arrayValue))
-                    //{
-                    //    onSuccess?.Invoke(jsonResponse.fields[fieldName].arrayValue);
-                    //}
+                    else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].arrayValue))
+                    {
+                        onSuccess?.Invoke(jsonResponse.fields[fieldName].arrayValue);
+                    }
                     else
                     {
                         onError?.Invoke($"Field '{fieldName}' has no value.");
@@ -108,11 +142,28 @@ public class FirestoreAPI
             }
         }
     }
-    
-    
-    //done
+    #endregion
+
+    #region Write
+
+    /// <summary>
+    /// Sets data at the specified Firestore path.
+    /// </summary>
+    /// <param name="path">The Firestore document path.</param>
+    /// <param name="dict">The dictionary containing the data to set.</param>
+    /// <param name="onSuccess">The action to execute on success.</param>
+    /// <param name="onError">The action to execute on error.</param>
+    /// <exception cref="Exception">Thrown when an error occurs during the operation.</exception>
     public async void SetData(string path, Dictionary<string, object> dict, Action onSuccess = null, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
         string url = $"{baseUrl}{path}";
 
         string jsonData = ToJSON(dict);
@@ -147,9 +198,26 @@ public class FirestoreAPI
         }
     }
 
-    //done
+
+    /// <summary>
+    /// Sets data in the Firestore database at the specified path.
+    /// </summary>
+    /// <param name="path">The path where the data should be set.</param>
+    /// <param name="fieldName">The name of the field to set.</param>
+    /// <param name="value">The value to set for the specified field.</param>
+    /// <param name="onSuccess">Callback action to be invoked on successful operation.</param>
+    /// <param name="onError">Callback action to be invoked if an error occurs.</param>
+    /// <exception cref="Exception">Throws an exception if the operation fails.</exception>
     public async void SetData(string path, string fieldName, object value, Action onSuccess = null, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
         Dictionary<string, object> dict = new Dictionary<string, object> { { fieldName, value } };
 
         string url = $"{baseUrl}{path}?updateMask.fieldPaths={string.Join(",", dict.Keys)}";
@@ -185,9 +253,27 @@ public class FirestoreAPI
             }
         }
     }
+    #endregion
 
+    #region Other
+    /// <summary>
+    /// Reads data from the specified Firestore path.
+    /// </summary>
+    /// <typeparam name="T">The type of the data to be read.</typeparam>
+    /// <param name="path">The Firestore path to read data from.</param>
+    /// <param name="onSuccess">Callback action to be invoked on successful data retrieval.</param>
+    /// <param name="onError">Optional callback action to be invoked on error.</param>
+    /// <exception cref="Exception">Thrown when an error occurs during data retrieval.</exception>
     public async void DeleteData(string path, Action<string> onSuccess = null, Action<string> onError = null)
     {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
         string url = $"{baseUrl}{path}";
 
         using (HttpClient client = new HttpClient())
@@ -215,6 +301,14 @@ public class FirestoreAPI
         }
     }
 
+
+    /// <summary>
+    /// Validates if the given Firestore path exists.
+    /// </summary>
+    /// <param name="path">The Firestore path to validate.</param>
+    /// <param name="onSuccess">Action to execute if the path exists. The action receives a boolean indicating the existence of the path.</param>
+    /// <param name="onError">Optional action to execute if an error occurs. The action receives an error message.</param>
+    /// <exception cref="Exception">Thrown when an unexpected error occurs during the validation process.</exception>
     public async void ValidatePath(string path, Action<bool> onSuccess, Action<string> onError = null)
     {
         string[] parts = path.Split('/');
@@ -247,6 +341,7 @@ public class FirestoreAPI
             }
         }
     }
+    #endregion
 
     #region Query
     public async void QueryItems(string path, string collectionName, DateTime filterTime, Action<List<string>> onSuccess, Action<string> onError = null)
