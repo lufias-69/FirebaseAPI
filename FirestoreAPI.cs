@@ -119,10 +119,10 @@ public class FirestoreAPI
                     {
                         onSuccess?.Invoke(jsonResponse.fields[fieldName].timestampValue);
                     }
-                    else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].arrayValue))
-                    {
-                        onSuccess?.Invoke(jsonResponse.fields[fieldName].arrayValue);
-                    }
+                    //else if (!string.IsNullOrEmpty(jsonResponse.fields[fieldName].arrayValue))
+                    //{
+                    //    onSuccess?.Invoke(jsonResponse.fields[fieldName].arrayValue);
+                    //}
                     else
                     {
                         onError?.Invoke($"Field '{fieldName}' has no value.");
@@ -145,6 +145,62 @@ public class FirestoreAPI
     #endregion
 
     #region Write
+
+    /// <summary>
+    /// Sets data at the specified Firestore path.
+    /// </summary>
+    /// <param name="path">The Firestore path where data will be set.</param>
+    /// <param name="obj">The object to be set at the specified path.</param>
+    /// <param name="onSuccess">Callback action to be invoked on successful operation.</param>
+    /// <param name="onError">Callback action to be invoked if an error occurs.</param>
+    /// <exception cref="Exception">Throws an exception if the operation fails.</exception>
+    public async void SetData(string path, object obj, Action onSuccess = null, Action<string> onError = null)
+    {
+        string[] parts = path.Split('/');
+        if (parts.Length % 2 != 0)
+        {
+            onError?.Invoke($"Invalid path format. Path must contain odd number of segments");
+            if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
+            return;
+        }
+
+        Dictionary<string, object> dict = ToDict(obj);
+
+        string url = $"{baseUrl}{path}";
+
+        string jsonData = ToJSON(dict);
+
+        using (HttpClient client = new HttpClient())
+        {
+            HttpContent content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+            // Add a header to simulate a PATCH request
+            HttpRequestMessage request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Post,  // Use POST instead of PATCH
+                RequestUri = new Uri(url),
+                Content = content
+            };
+            request.Headers.Add("X-HTTP-Method-Override", "PATCH");  // Method override
+
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                //string data = await response.Content.ReadAsStringAsync();
+                onSuccess?.Invoke();
+                if (onSuccess == null) Console.WriteLine("Document set successfully at " + path);
+            }
+            else
+            {
+                string errorData = await response.Content.ReadAsStringAsync();
+                onError?.Invoke($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+                if (onError == null) throw new Exception($"Error setting document: {response.ReasonPhrase}, Details: {errorData}");
+            }
+        }
+    }
+
+
 
     /// <summary>
     /// Sets data at the specified Firestore path.
@@ -318,7 +374,7 @@ public class FirestoreAPI
             if (onError == null) throw new Exception($"Invalid path format. Path must contain odd number of segments");
             return;
         }
-        
+
         string url = $"{baseUrl}{path}";
 
         using (HttpClient client = new HttpClient())
@@ -540,7 +596,7 @@ public class FirestoreAPI
     }
 
 
-    private object ParseNestedObject(Type objectType, Dictionary<string, FirestoreField> mapFields)
+    object ParseNestedObject(Type objectType, Dictionary<string, FirestoreField> mapFields)
     {
         // Create an instance of the nested object type
         var nestedObject = Activator.CreateInstance(objectType);
@@ -591,7 +647,7 @@ public class FirestoreAPI
 
         return nestedObject;
     }
-    private object ParseArray(ArrayValue arrayValue, Type elementType, bool isList = false)
+    object ParseArray(ArrayValue arrayValue, Type elementType, bool isList = false)
     {
         var values = arrayValue.values;
         var array = Array.CreateInstance(elementType, values.Count);
@@ -645,7 +701,7 @@ public class FirestoreAPI
         return array;
     }
 
-    public string ToJSON(Dictionary<string, object> fields)
+    string ToJSON(Dictionary<string, object> fields)
     {
         var formattedFields = new StringBuilder();
         formattedFields.Append("{\"fields\":{");
@@ -710,7 +766,7 @@ public class FirestoreAPI
     }
 
 
-    private string HandleArray(string fieldName, IEnumerable<object> array)
+    string HandleArray(string fieldName, IEnumerable<object> array)
     {
         var formattedFields = new StringBuilder();
         formattedFields.Append($"\"{fieldName}\":{{\"arrayValue\":{{\"values\":[");
@@ -748,6 +804,24 @@ public class FirestoreAPI
 
         formattedFields.Append("]}},");
         return formattedFields.ToString();
+    }
+
+    Dictionary<string, object> ToDict(object obj)
+    {
+        if (obj == null || !obj.GetType().IsClass)
+        {
+            throw new ArgumentException("Only class instances are allowed.");
+        }
+
+        var dict = new Dictionary<string, object>();
+        var fields = obj.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var field in fields)
+        {
+            dict.Add(field.Name, field.GetValue(obj));
+        }
+
+        return dict;
     }
 
     #region Class
